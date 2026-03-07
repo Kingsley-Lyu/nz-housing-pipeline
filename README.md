@@ -1,6 +1,6 @@
 # 🏠 NZ Housing Market Analytics Pipeline
 
-A end-to-end data engineering project that ingests, transforms, and analyses New Zealand housing market data to uncover trends in property prices, affordability, and regional demand.
+An end-to-end data engineering project that ingests, transforms, and analyses New Zealand housing market data to uncover trends in property prices, affordability, and regional demand.
 
 ---
 
@@ -18,20 +18,19 @@ This project demonstrates core data engineering skills including batch ingestion
 - Model data using a star schema (fact + dimension tables) in Snowflake
 - Apply data quality checks and transformation logic using dbt
 - Orchestrate the pipeline end-to-end with Apache Airflow
-- Deliver analytical outputs: median prices by region, affordability index, and supply trends
+- Deliver analytical outputs: affordability index, supply vs demand, and rate sensitivity analysis
 
 ---
 
 ## 🗂️ Data Sources
 
-## 📦 Data Sources
-
 | # | Source | Data | Format | Frequency |
 |---|---|---|---|---|
-| 1 | Stats NZ | Building consents, rental indexes, population by region | CSV | Monthly |
-| 2 | Trademe Property API | Residential listings, asking prices, days on market | API (JSON) | Weekly |
-| 3 | REINZ / CoreLogic | Median sale prices, sales volumes by region | CSV / PDF | Monthly |
-| 4 | Reserve Bank NZ | Interest rates, mortgage rates | CSV | Monthly |
+| 1 | Stats NZ | Building consents by dwelling type, HUD rental price index by region | XLSX | Monthly |
+| 2 | Reserve Bank NZ (RBNZ) | Mortgage interest rates — special (B21), standard (B20), weighted avg (B30) | XLSX | Monthly |
+| 3 | Trademe Property API | Residential listings, asking prices, days on market by region | API (JSON) | Weekly |
+
+> **Note:** All 3 sources are aggregated to region + month grain before joining. They do not track individual properties — analysis is macro-level.
 
 ---
 
@@ -40,26 +39,26 @@ This project demonstrates core data engineering skills including batch ingestion
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    DATA SOURCES                         │
-│   Stats NZ CSV   │   Trademe API   │   REINZ Reports   │
-└────────┬─────────────────┬─────────────────┬────────────┘
-         │                 │                 │
-         ▼                 ▼                 ▼
+│     Stats NZ XLSX    │   RBNZ XLSX    │  Trademe API    │
+└────────┬─────────────────────┬───────────────┬──────────┘
+         │                     │               │
+         ▼                     ▼               ▼
 ┌─────────────────────────────────────────────────────────┐
 │              INGESTION LAYER (Python)                   │
-│         pandas + requests + boto3                       │
+│         stats_nz.py  │  rbnz.py  │  trademe.py          │
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │              STORAGE LAYER (AWS S3)                     │
-│         Raw files land in S3 Data Lake                  │
+│              Raw files land in S3 Data Lake             │
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │            DATA WAREHOUSE (Snowflake)                   │
 │   RAW schema → STAGING schema → MARTS schema            │
-│         (Bronze)       (Silver)      (Gold)             │
+│      (Bronze)       (Silver)         (Gold)             │
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
@@ -80,28 +79,58 @@ This project demonstrates core data engineering skills including batch ingestion
 ## 📊 Data Model (Star Schema)
 
 ```
-                    ┌─────────────┐
-                    │  DIM_TIME   │
-                    │─────────────│
-                    │ date_id (PK)│
-                    │ year        │
-                    │ month       │
-                    │ quarter     │
-                    │ is_covid_era│
-                    └──────┬──────┘
-                           │
-┌─────────────┐    ┌───────┴──────────────┐
-│ DIM_REGION  │    │  FACT_PROPERTY_SALES  │
-│─────────────│    │──────────────────────│
-│ region_id   ├────│ sale_id (PK)          │
-│ region_name │    │ region_id (FK)        │
-│ territorial │    │ date_id (FK)          │
-│ island      │    │ median_price          │
-└─────────────┘    │ num_sales             │
-                   │ days_on_market        │
-                   │ affordability_index   │
-                   └──────────────────────┘
+                         ┌─────────────┐
+                         │  DIM_TIME   │
+                         │─────────────│
+                         │ date_id (PK)│
+                         │ year        │
+                         │ month       │
+                         │ quarter     │
+                         └──────┬──────┘
+                                │
+          ┌─────────────────────┼──────────────────────┐
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│   FACT_SUPPLY    │  │  FACT_MORTGAGE   │  │  FACT_LISTINGS   │
+│──────────────────│  │──────────────────│  │──────────────────│
+│ date_id (FK)     │  │ date_id (FK)     │  │ date_id (FK)     │
+│ dwelling_type    │  │ term             │  │ region           │
+│ consents_issued  │  │ rate_pct         │  │ avg_asking_price │
+│ floor_area       │  │ series           │  │ num_listings     │
+│ value            │  └──────────────────┘  │ days_on_market   │
+└──────────────────┘                        └──────────────────┘
+          │                                          │
+          └──────────────┬───────────────────────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  MART_AFFORDABILITY │
+              │─────────────────────│
+              │ date_id             │
+              │ region              │
+              │ avg_asking_price    │
+              │ one_year_rate       │
+              │ consents_issued     │
+              │ affordability_index │
+              │ supply_gap          │
+              └─────────────────────┘
 ```
+
+---
+
+## 🔗 How The 3 Sources Integrate
+
+| Source | Role | Grain |
+|---|---|---|
+| Stats NZ | Supply side — how many homes are being built | National + monthly |
+| RBNZ | Cost side — how much it costs to borrow | National + monthly |
+| Trademe | Demand side — what's listed and at what price | Region + weekly |
+
+**3 key analytical outputs:**
+- **Affordability Index** — avg listing price vs current mortgage rate
+- **Supply Gap** — consents issued vs active listings per region
+- **Rate Sensitivity** — do listing volumes/prices move when rates change
 
 ---
 
@@ -130,9 +159,9 @@ nz-housing-pipeline/
 │   └── housing_pipeline.py      # Main monthly pipeline DAG
 │
 ├── ingestion/                   # Data ingestion scripts
-│   ├── stats_nz.py              # Pull Stats NZ CSVs
-│   ├── trademe.py               # Trademe Property API
-│   └── reinz.py                 # REINZ report loader
+│   ├── stats_nz.py              # Stats NZ building consents + HUD rental index
+│   ├── rbnz.py                  # RBNZ mortgage rates (B20, B21, B30)
+│   └── trademe.py               # Trademe Property API listings
 │
 ├── dbt_project/                 # dbt project
 │   ├── models/
@@ -142,10 +171,51 @@ nz-housing-pipeline/
 │   ├── tests/                   # dbt data tests
 │   └── dbt_project.yml
 │
+├── data/                        # Local raw data (gitignored)
+│   └── raw/
+│       ├── stats_nz/
+│       └── rbnz/
+│
 ├── tests/                       # Python unit tests
 ├── docker-compose.yml           # Airflow local setup
+├── .env                         # API keys and credentials (gitignored)
+├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
 
+## 📈 Analytical Outputs
+
+- **Affordability Index** — average listing price vs current 1-year mortgage rate
+- **Supply Gap** — building consents issued vs active listings by region
+- **Rate Sensitivity** — how listing volumes and prices respond to rate changes
+- **Rental Trends** — annual rental price change by region over time
+
 ---
+
+## 🗺️ Roadmap
+
+- [x] Project setup and architecture design
+- [x] Stats NZ ingestion (building consents + HUD rental index)
+- [x] RBNZ ingestion (mortgage rates B20, B21, B30)
+- [ ] Trademe API ingestion (pending API approval)
+- [ ] Snowflake schema and table setup
+- [ ] dbt staging models
+- [ ] dbt mart models (fact + dims + affordability mart)
+- [ ] dbt data quality tests
+- [ ] Airflow DAG
+- [ ] Dashboard / reporting layer
+- [ ] Terraform infrastructure-as-code
+- [ ] CI/CD with GitHub Actions
+
+---
+
+## 🙋 About
+
+Built as a portfolio project to demonstrate data engineering skills relevant to the New Zealand job market. All data sources are publicly available or use free-tier APIs.
+
+---
+
+## 📄 License
+
+MIT License — feel free to fork and adapt for your own learning.
