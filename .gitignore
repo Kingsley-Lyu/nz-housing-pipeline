@@ -1,0 +1,32 @@
+# Secrets
+.env
+
+# Raw data files
+data/
+
+# Excel and CSV files
+*.xlsx
+*.csv
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+
+# VSCode settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# dbt
+logs/
+target/
+dbt_packages/
+.user.yml
