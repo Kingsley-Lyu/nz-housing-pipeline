@@ -1,0 +1,78 @@
+version: 2
+
+# ------------------------------------------------------------------
+# Sources — tells dbt where raw data lives in Snowflake
+# ------------------------------------------------------------------
+sources:
+  - name: raw
+    database: NZ_HOUSING
+    schema: RAW
+    tables:
+      - name: BUILDING_CONSENTS
+        description: "Stats NZ building consents issued monthly by dwelling type"
+      - name: HUD_RENTAL_INDEX
+        description: "HUD Rental Price Index by region (interim replacement for Stats NZ RPI)"
+      - name: MORTGAGE_RATES
+        description: "RBNZ residential mortgage interest rates — special, standard, weighted avg"
+
+# ------------------------------------------------------------------
+# Models — staging layer tests
+# ------------------------------------------------------------------
+models:
+  - name: stg_building_consents
+    description: "Cleaned building consent data — yearly totals by dwelling type"
+    columns:
+      - name: consent_year
+        description: "Year consents were issued"
+        tests:
+          - not_null
+          - unique
+      - name: all_dwellings
+        description: "Total new dwellings consented"
+        tests:
+          - not_null
+      - name: houses
+        tests:
+          - not_null
+
+  - name: stg_hud_rental
+    description: "Cleaned HUD rental price index — monthly by region"
+    columns:
+      - name: region
+        description: "NZ region name"
+        tests:
+          - not_null
+      - name: period
+        description: "Month of the rental index reading"
+        tests:
+          - not_null
+      - name: rental_price_index
+        description: "Rental price index value"
+        tests:
+          - not_null
+
+  - name: stg_mortgage_rates
+    description: "Cleaned RBNZ mortgage rates — monthly by term and series"
+    columns:
+      - name: rate_date
+        description: "Date of the rate reading"
+        tests:
+          - not_null
+      - name: rate_pct
+        description: "Interest rate percentage"
+        tests:
+          - not_null
+      - name: term
+        description: "Fixed term of the mortgage rate"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Floating', '6 months', '1 year', '18 months',
+                  '2 years', '3 years', '4 years', '5 years']
+      - name: series
+        description: "RBNZ rate series identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['mortgage_special_rates', 'mortgage_standard_rates', 'mortgage_weighted_avg']
