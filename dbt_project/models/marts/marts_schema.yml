@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: mart_affordability
+    description: >
+      NZ Housing Affordability Mart — joins HUD rental index, RBNZ mortgage rates,
+      and Stats NZ building consents to produce a unified affordability view
+      by region and month. Primary analytical output of the pipeline.
+
+    columns:
+      - name: region
+        description: "NZ region from HUD rental index"
+        tests:
+          - not_null
+
+      - name: period
+        description: "Month of the reading"
+        tests:
+          - not_null
+
+      - name: rental_price_index
+        description: "HUD rental price index value for the region and month"
+        tests:
+          - not_null
+
+      - name: one_year_special_rate
+        description: "RBNZ 1 year special mortgage rate for the month"
+
+      - name: affordability_index
+        description: >
+          Rental price index divided by 1 year mortgage rate.
+          Higher value = less affordable.
+
+      - name: supply_pressure
+        description: "Derived supply pressure flag based on rental growth and consent volumes"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['High Pressure', 'Moderate Pressure', 'Low Pressure']
