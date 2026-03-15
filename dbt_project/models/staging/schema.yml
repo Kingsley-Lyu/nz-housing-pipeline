@@ -69,10 +69,11 @@ models:
           - accepted_values:
               arguments:
                 values: ['Floating', '6 months', '1 year', '18 months',
-                  '2 years', '3 years', '4 years', '5 years']
+                         '2 years', '3 years', '4 years', '5 years']
       - name: series
         description: "RBNZ rate series identifier"
         tests:
           - not_null
           - accepted_values:
-              values: ['mortgage_special_rates', 'mortgage_standard_rates', 'mortgage_weighted_avg']
+              arguments:
+                values: ['mortgage_special_rates', 'mortgage_standard_rates', 'mortgage_weighted_avg']
