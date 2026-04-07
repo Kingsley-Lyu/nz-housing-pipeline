@@ -8,7 +8,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    # Pass Snowflake credentials into the container from your .env
+    # Installs packages in ALL containers (webserver, scheduler, workers)
+    _PIP_ADDITIONAL_REQUIREMENTS: 'pandas==2.2.2 openpyxl==3.1.5 requests==2.32.3 python-dotenv==1.0.1 snowflake-connector-python==3.12.2 snowflake-sqlalchemy==1.6.1 dbt-snowflake==1.8.4'
+    # Snowflake credentials from .env
     SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
     SNOWFLAKE_USER: ${SNOWFLAKE_USER}
     SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
@@ -21,6 +23,7 @@ x-airflow-common: &airflow-common
     - ./dbt_project:/opt/airflow/dbt_project
     - ./data:/opt/airflow/data
     - ./logs:/opt/airflow/logs
+    - ./requirements.txt:/opt/airflow/requirements.txt
   depends_on:
     postgres:
       condition: service_healthy
@@ -43,9 +46,8 @@ services:
     <<: *airflow-common
     command: >
       bash -c "
-        pip install -r /opt/airflow/ingestion/../requirements.txt &&
         airflow db migrate &&
-        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true
       "
     restart: on-failure
 
