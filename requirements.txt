@@ -1,0 +1,12 @@
+# Ingestion
+pandas==2.2.2
+requests==2.32.3
+openpyxl==3.1.5
+python-dotenv==1.0.1
+
+# Snowflake
+snowflake-connector-python==3.12.2
+snowflake-sqlalchemy==1.6.1
+
+# dbt
+dbt-snowflake==1.8.4
