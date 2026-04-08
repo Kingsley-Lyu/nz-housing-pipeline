@@ -163,6 +163,15 @@ def clean_hud_rental(df: pd.DataFrame) -> pd.DataFrame:
     df_long["period"] = pd.to_datetime(df_long["period"], errors="coerce")
     df_long = df_long.dropna(subset=["period", "rental_price_index"])
 
+    # values are stored as decimals (0.013 = 1.3%) — convert to percentage
+    df_long["rental_price_index"] = pd.to_numeric(df_long["rental_price_index"], errors="coerce") * 100
+
+    # rename Annual Change column regardless of exact name in Excel
+    annual_change_col = [c for c in id_cols if c != "region"]
+    if annual_change_col:
+        df_long = df_long.rename(columns={annual_change_col[0]: "Annual Change"})
+        df_long["Annual Change"] = pd.to_numeric(df_long["Annual Change"], errors="coerce") * 100
+
     print(f"  [hud_rental_index] Cleaned shape (long format): {df_long.shape}")
     return df_long
 
