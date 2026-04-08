@@ -62,3 +62,9 @@ services:
     <<: *airflow-common
     command: scheduler
     restart: always
+
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - "3000:3000"
+    restart: always
