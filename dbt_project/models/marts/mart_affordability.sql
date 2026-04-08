@@ -4,7 +4,7 @@
 -- to produce a unified affordability view by region and month
 
 WITH rental AS (
-    SELECT
+    SELECT DISTINCT
         region,
         period,
         rental_price_index,
