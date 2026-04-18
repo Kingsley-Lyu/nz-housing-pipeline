@@ -41,7 +41,7 @@ This project demonstrates core data engineering skills including batch ingestion
 ┌─────────────────────────────────────────────────┐
 │                  DATA SOURCES                   │
 │        Stats NZ XLSX       │     RBNZ XLSX      │
-└────────┬────────────────────────────┬────────────┘
+└────────┬───────────────────────────┬────────────┘
          │                            │
          ▼                            ▼
 ┌─────────────────────────────────────────────────┐
