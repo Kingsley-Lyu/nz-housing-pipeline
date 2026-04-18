@@ -2,6 +2,8 @@
 
 An end-to-end data engineering project that ingests, transforms, and analyses New Zealand housing market data to uncover trends in rental affordability, mortgage rates, and housing supply.
 
+![NZ Housing Dashboard](assets/dashboard.png)
+
 ---
 
 ## 📌 Project Overview

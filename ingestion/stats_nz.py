@@ -4,44 +4,8 @@ import pandas as pd
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
-"""
-stats_nz.py
------------
-Ingests NZ housing supply and rental market data from two sources:
-
-    1. Stats NZ — Building Consents Issued (monthly)
-       New residential dwelling approvals broken down by type:
-       houses, apartments, townhouses, and retirement village units.
-       Used as the primary housing supply indicator in the pipeline.
-
-    2. HUD — Rental Price Index (monthly)
-       Published by the Ministry of Housing and Urban Development as an
-       interim replacement while Stats NZ's own Rental Price Index remains
-       on pause (as of 2025). Tracks annual rental price changes by region
-       using bond lodgement data at record level.
-
-Both sources are hosted as XLSX files and support automated downloads.
-URLs are built dynamically based on the current date with retry logic
-to account for publication lag (typically 2-4 months behind).
-
-Once downloaded, this script:
-    1. Identifies the correct header row (both files contain metadata rows on top)
-    2. Reads the relevant sheet from each XLSX file
-    3. Cleans and standardises column names
-    4. Melts HUD data from wide to long format for warehouse loading
-    5. Saves raw files locally under data/raw/stats_nz/
-
-Output schemas:
-    building_consents — period | houses | apartments | townhouses | all_dwellings | floor_area | value
-    hud_rental_index  — region | annual_change | period | rental_price_index
-"""
-
 OUTPUT_DIR = "data/raw/stats_nz"
 
-
-# ------------------------------------------------------------------
-# URL builders
-# ------------------------------------------------------------------
 
 def get_building_consents_url(lag_months: int) -> tuple[str, str]:
     target      = date.today() - relativedelta(months=lag_months)
@@ -73,10 +37,6 @@ def get_hud_rental_url(lag_months: int) -> tuple[str, str]:
     )
     return url, month_label
 
-
-# ------------------------------------------------------------------
-# Generic downloader
-# ------------------------------------------------------------------
 
 def try_download(name: str, url_fn, start_lag: int = 2, max_retries: int = 8) -> tuple:
     for lag in range(start_lag, start_lag + max_retries):
@@ -118,19 +78,13 @@ def download_and_save(name: str, url_fn, sheet: str | int, header_row: int) -> p
     return df
 
 
-# ------------------------------------------------------------------
-# Cleaners
-# ------------------------------------------------------------------
-
 def clean_building_consents(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = df.columns.astype(str).str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
     df = df.dropna(how="all")
 
-    # first column is the time period
     first_col = df.columns[0]
     df = df.rename(columns={first_col: "period"})
 
-    # drop rows where period is NaN or is a footnote like "(1)"
     df = df[df["period"].notna()]
     df = df[~df["period"].astype(str).str.startswith("(")]
 
@@ -140,20 +94,14 @@ def clean_building_consents(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_hud_rental(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    HUD RPI sheet — annual rental price change by region over time.
-    Columns confirmed: region, Annual Change, then date columns (2023-12 to 2025-09)
-    """
     df.columns = df.columns.astype(str).str.strip()
 
-    # first unnamed column is the region
     first_col = df.columns[0]
     df = df.rename(columns={first_col: "region"})
 
     df = df[df["region"].notna()]
     df = df[~df["region"].astype(str).str.startswith("NaN")]
 
-    # melt from wide (date columns) to long format — better for data warehouse loading
     id_cols  = ["region", "Annual Change"] if "Annual Change" in df.columns else ["region"]
     date_cols = [c for c in df.columns if c not in id_cols]
 
@@ -163,10 +111,9 @@ def clean_hud_rental(df: pd.DataFrame) -> pd.DataFrame:
     df_long["period"] = pd.to_datetime(df_long["period"], errors="coerce")
     df_long = df_long.dropna(subset=["period", "rental_price_index"])
 
-    # values are stored as decimals (0.013 = 1.3%) — convert to percentage
+    # values stored as decimals (0.013 = 1.3%)
     df_long["rental_price_index"] = pd.to_numeric(df_long["rental_price_index"], errors="coerce") * 100
 
-    # rename Annual Change column regardless of exact name in Excel
     annual_change_col = [c for c in id_cols if c != "region"]
     if annual_change_col:
         df_long = df_long.rename(columns={annual_change_col[0]: "Annual Change"})
@@ -176,19 +123,11 @@ def clean_hud_rental(df: pd.DataFrame) -> pd.DataFrame:
     return df_long
 
 
-# ------------------------------------------------------------------
-# Source registry — name: (url_fn, sheet, header_row, cleaner)
-# ------------------------------------------------------------------
-
 SOURCES = {
     "building_consents": (get_building_consents_url, "Table 1", 6,  clean_building_consents),
     "hud_rental_index":  (get_hud_rental_url,        "HUD RPI", 9,  clean_hud_rental),
 }
 
-
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
 
 def run():
     print("=" * 55)
